@@ -40,17 +40,35 @@ import org.xml.sax.SAXException;
  */
 public class Worker extends SwingWorker {
 
+    public static enum ArchiveMode {
+    
+        archive("archiveMessages"), trash("deleteMessages");
+        
+        private String uriFragment;
+        private ArchiveMode(String uriFragment){
+            assert uriFragment!=null && !uriFragment.isEmpty():"Invalid mode arg";
+            this.uriFragment=uriFragment;
+        }
+        
+        public String getUriFragment(){
+            return uriFragment;
+        }
+    }
+    
     private String authToken;
     private String rnrse;
     private ProgressMonitor pm;
+    private ArchiveMode mode;
     
-    public Worker(String authToken, String rnrse, ProgressMonitor pm){
+    public Worker(String authToken, String rnrse, ProgressMonitor pm, ArchiveMode mode){
         assert authToken!=null && !authToken.isEmpty():"Invalid auth token";
         assert rnrse!=null && !authToken.isEmpty():"Invalid rnrse";
         assert pm!=null : "invalid progress monitor";
+        assert mode!=null:"invalid operation mode";
         this.authToken=authToken;
         this.rnrse=rnrse;
         this.pm=pm;
+        this.mode=mode;
     }
     
     @Override
@@ -71,7 +89,7 @@ public class Worker extends SwingWorker {
             
 
             if (msgIds.size() > 0) {
-                archiveThese(authToken, rnrse, msgIds);
+                archiveThese(authToken, rnrse, msgIds, mode);
             }
         } while (msgIds.size() > 0 && !pm.isCanceled());
         this.firePropertyChange("finish", null, null);}catch(Exception ex){
@@ -92,13 +110,15 @@ public class Worker extends SwingWorker {
         return retval;
     }
     
-    private static void archiveThese(String authToken, String rsrse, Collection<String> msgIds) throws HttpException, IOException {
+    private static void archiveThese(String authToken, String rsrse, Collection<String> msgIds, ArchiveMode mode) throws HttpException, IOException {
+        System.out.println(mode);
+        System.out.println(mode.getUriFragment());
         HttpClient c = new HttpClient();
-        PostMethod m = new PostMethod("https://www.google.com/voice/b/0/inbox/archiveMessages/");
+        PostMethod m = new PostMethod("https://www.google.com/voice/b/0/inbox/"+ mode.getUriFragment()+"/");
         for (String msgid : msgIds) {
             m.addParameter("messages", msgid);
         }
-        m.addParameter("archive", "1");
+        m.addParameter(mode.toString(), "1");
         m.addParameter("_rnr_se", rsrse);
         m.setRequestHeader("Authorization", "GoogleLogin auth=" + authToken);
         int rcode;

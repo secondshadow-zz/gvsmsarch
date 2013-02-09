@@ -4,7 +4,7 @@
 
   <groupId>kevin</groupId>
   <artifactId>gvsmsarch</artifactId>
-  <version>0.2-SNAPSHOT</version>
+  <version>0.3-SNAPSHOT</version>
   <packaging>jar</packaging>
 
   <name>gvmsgnuke</name>

@@ -61,8 +61,10 @@ public class App {
 
             String userName = getUserName();
             String password = getPassword();
-
-            if (areYouSure()) {
+            int modeChosenIndex=JOptionPane.showOptionDialog(null, "Operation mode", "", JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE, null, Worker.ArchiveMode.values(), Worker.ArchiveMode.archive);
+            Worker.ArchiveMode modeChosen;
+            if ( modeChosenIndex!=JOptionPane.CLOSED_OPTION && areYouSure(modeChosen=Worker.ArchiveMode.values()[modeChosenIndex])) {
+                assert modeChosen!=null:"ZOMG";
                 String authToken = getToken(userName, password);
                 String rnrse = getRnrse(authToken);
 
@@ -70,7 +72,8 @@ public class App {
                 final ProgressMonitor pm = new ProgressMonitor(null, "Working", "", 0, App.parseMsgsLeft(extractInboxJson(authToken)));
                 pm.setMillisToDecideToPopup(0);
                 pm.setMillisToPopup(0);
-                Worker worker = new Worker(authToken, rnrse, pm);
+                
+                Worker worker = new Worker(authToken, rnrse, pm,modeChosen);
                 worker.addPropertyChangeListener(new PropertyChangeListener() {
                     @Override
                     public void propertyChange(PropertyChangeEvent evt) {
@@ -175,8 +178,8 @@ public class App {
         return JOptionPane.showInputDialog("Enter your password");
     }
 
-    private static boolean areYouSure() {
-        return JOptionPane.showConfirmDialog(null, "Are you sure?", "Really really sure?", JOptionPane.YES_NO_OPTION, JOptionPane.INFORMATION_MESSAGE) == JOptionPane.YES_OPTION;
+    private static boolean areYouSure(Worker.ArchiveMode mode) {
+        return JOptionPane.showConfirmDialog(null, "Are you sure you want to " + mode.toString() +" your messages?", "Really really sure?", JOptionPane.YES_NO_OPTION, JOptionPane.INFORMATION_MESSAGE) == JOptionPane.YES_OPTION;
     }
 
     static String extractInboxJson(String authToken) throws ParserConfigurationException, IOException, SAXException, XPathExpressionException {
