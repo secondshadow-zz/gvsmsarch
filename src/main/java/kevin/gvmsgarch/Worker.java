@@ -23,6 +23,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.Set;
 import javax.swing.ProgressMonitor;
 import javax.swing.SwingWorker;
 import javax.xml.parsers.ParserConfigurationException;
@@ -43,22 +44,12 @@ public class Worker extends SwingWorker {
     public static enum ListLocation {
 
         inbox("https://www.google.com/voice/inbox/recent/inbox/"),
-        voicemail("https://www.google.com/voice/inbox/recent/voicemail/") {
-            @Override
-            public boolean isModeAllowed(ArchiveMode mode) {
-                return mode.equals(ArchiveMode.trash) || mode.equals(ArchiveMode.deleteForever);
-            }
-        },
-        sms("https://www.google.com/voice/inbox/recent/sms/") {
-            @Override
-            public boolean isModeAllowed(ArchiveMode mode) {
-                return mode.equals(ArchiveMode.trash) || mode.equals(ArchiveMode.deleteForever);
-            }
-        },
+        voicemail("https://www.google.com/voice/inbox/recent/voicemail/"),
+        sms("https://www.google.com/voice/inbox/recent/sms/"),
         trash("https://www.google.com/voice/inbox/recent/trash") {
             @Override
             public boolean isModeAllowed(ArchiveMode mode) {
-                return mode.equals(ArchiveMode.deleteForever);
+                return mode.equals(ArchiveMode.deleteForever) || mode.equals(ArchiveMode.undelete);
             }
         };
         private String uri;
@@ -75,12 +66,12 @@ public class Worker extends SwingWorker {
         public boolean isModeAllowed(ArchiveMode mode) {
             return true;
         }
-        
-        public ArchiveMode[] getAllowedModes(){
+
+        public ArchiveMode[] getAllowedModes() {
             ArrayList<ArchiveMode> modes = new ArrayList<ArchiveMode>();
-            
-            for(ArchiveMode m:ArchiveMode.values()) {
-                if(isModeAllowed(m)){
+
+            for (ArchiveMode m : ArchiveMode.values()) {
+                if (isModeAllowed(m)) {
                     modes.add(m);
                 }
             }
@@ -90,32 +81,46 @@ public class Worker extends SwingWorker {
 
     public static enum ArchiveMode {
 
-        archive("archiveMessages"), trash("deleteMessages"), deleteForever("deleteForeverMessages","unrecoverably delete"){
+        archive("archiveMessages", "archive"),
+        trash("deleteMessages", "trash"),
+        undelete("deleteMessages", "trash"),
+        markRead("mark", "read", "mark read"),
+        markUnread("mark", "read","0", "mark unread"),
+        deleteForever("deleteForeverMessages", "", "unrecoverably delete") {
             @Override
-            public String getWarning(){
-                return 
-                    "DANGER DANGER DANGER DANGER DANGER DANDER DANDER\n" +
-                    "WARNING: This is permanent and cannot be undone!\n"+
-                    "DANGER DANGER DANGER DANGER DANGER DANDER DANDER";
+            public String getWarning() {
+                return "DANGER DANGER DANGER DANGER DANGER DANDER DANDER\n"
+                        + "WARNING: This is permanent and cannot be undone!\n"
+                        + "DANGER DANGER DANGER DANGER DANGER DANDER DANDER";
             }
         };
         private String uriFragment;
         private String prettyString;
+        private String labelString;
+        private String labelStringValue;
 
-        private ArchiveMode(String uriFragment) {
-            init(uriFragment, this.name());
+        private ArchiveMode(String uriFragment, String labelString) {
+            init(uriFragment, labelString, "1", this.name());
         }
 
-        private ArchiveMode(String uriFragment, String prettyString) {
-            init(uriFragment, prettyString);
+        private ArchiveMode(String uriFragment, String labelString, String prettyString) {
+            init(uriFragment, labelString, "1", prettyString);
+        }
+        
+        private ArchiveMode(String uriFragment, String labelString,String labelStringValue, String prettyString) {
+            init(uriFragment, labelString, labelStringValue, prettyString);
         }
 
         //Because apparently constructor chaining isn't allowed in enums :/
-        private void init(String uriFragment, String prettyString) {
+        private void init(String uriFragment, String labelString, String labelStringValue, String prettyString) {
             assert uriFragment != null && !uriFragment.isEmpty() : "Invalid mode arg";
             assert prettyString != null && !prettyString.isEmpty();
+            assert labelString != null;
+            assert labelStringValue!=null && !labelStringValue.isEmpty():"Invalid label string value";
             this.uriFragment = uriFragment;
             this.prettyString = prettyString;
+            this.labelString = labelString;
+            this.labelStringValue = labelStringValue;
         }
 
         public String getUriFragment() {
@@ -125,14 +130,22 @@ public class Worker extends SwingWorker {
         public String toPrettyString() {
             return prettyString;
         }
-        
-        public String getWarning(){
+
+        public String getWarning() {
             return null;
         }
-        
+
         @Override
-        public String toString(){
+        public String toString() {
             return toPrettyString();
+        }
+
+        public String labelString() {
+            return labelString;
+        }
+        
+        public String labelStringValue() {
+            return labelStringValue;
         }
     }
     private String authToken;
@@ -140,8 +153,9 @@ public class Worker extends SwingWorker {
     private ProgressMonitor pm;
     private ArchiveMode mode;
     private ListLocation location;
+    private ContactFilter filter;
 
-    public Worker(String authToken, String rnrse, ProgressMonitor pm, ArchiveMode mode, ListLocation location) {
+    public Worker(String authToken, String rnrse, ProgressMonitor pm, ArchiveMode mode, ListLocation location, ContactFilter filter) {
         assert authToken != null && !authToken.isEmpty() : "Invalid auth token";
         assert rnrse != null && !authToken.isEmpty() : "Invalid rnrse";
         assert pm != null : "invalid progress monitor";
@@ -152,8 +166,9 @@ public class Worker extends SwingWorker {
         this.pm = pm;
         this.mode = mode;
         this.location = location;
-        
-        if(!location.isModeAllowed(mode)) {
+        this.filter = (filter == null ? new NullFilter() : filter);
+
+        if (!location.isModeAllowed(mode)) {
             throw new IllegalArgumentException("Invalid operation mode selection for source location.");
         }
     }
@@ -167,47 +182,77 @@ public class Worker extends SwingWorker {
     private void archiveAll(String authToken, String rnrse) throws IOException, ParserConfigurationException, SAXException, XPathExpressionException, JSONException {
         try {
             Collection<String> msgIds = Collections.EMPTY_LIST;
+            int page = 1;
+            int processed = 0;
+            HashSet<String> alreadyProcessed = new HashSet<String>();
             do {
-                String json = App.extractInboxJson(authToken,location);
-                msgIds = getMessageIds(json);
+                do {
+                    String json = App.extractInboxJson(authToken, this.location, page);
+                    msgIds = getMessageIds(json, this.filter);
+                    if (msgIds != null) {
+                        msgIds.removeAll(alreadyProcessed);
+                        if(msgIds.isEmpty()) {
+                            page++;
+                        }
+                    } 
+                    
+                    
+                } while (msgIds!=null && msgIds.isEmpty());
 
-                Integer msgsLeft = App.parseMsgsLeft(json);
+                if (msgIds != null && msgIds.size() > 0) {
 
-                this.firePropertyChange("progress", null, msgsLeft);
-
-
-                if (msgIds.size() > 0) {
+                    processed += msgIds.size();
                     archiveThese(authToken, rnrse, msgIds, mode);
+                    alreadyProcessed.addAll(msgIds);
+                    this.firePropertyChange("progress", null, processed);
                 }
-            } while (msgIds.size() > 0 && !pm.isCanceled());
+            } while (msgIds != null && msgIds.size() > 0 && !pm.isCanceled());
             this.firePropertyChange("finish", null, null);
         } catch (Exception ex) {
             this.firePropertyChange("error", null, ex);
         }
     }
 
-    private static Collection<String> getMessageIds(String textContent) throws JSONException {
+    private static Set<String> getMessageIds(String textContent, ContactFilter filter) throws JSONException {
         HashSet<String> retval = new HashSet<String>();
         JSONObject top = new JSONObject(textContent);
 
 
         JSONObject messages = top.getJSONObject("messages");
         Iterator i = messages.keys();
-        while (i.hasNext()) {
-            retval.add(i.next().toString());
+        if (!i.hasNext()) {
+            retval = null;
+        } else {
+            while (i.hasNext()) {
+                retval.add(i.next().toString());
+            }
+        }
+
+
+
+        if (retval != null) {
+            HashSet<String> keysToRemove = new HashSet<String>();
+            for (String key : retval) {
+                if (!filter.process(messages.getJSONObject(key))) {
+                    keysToRemove.add(key);
+                }
+            }
+
+            retval.removeAll(keysToRemove);
         }
         return retval;
     }
 
     private static void archiveThese(String authToken, String rsrse, Collection<String> msgIds, ArchiveMode mode) throws HttpException, IOException {
-        System.out.println(mode);
-        System.out.println(mode.getUriFragment());
+
         HttpClient c = new HttpClient();
-        PostMethod m = new PostMethod("https://www.google.com/voice/b/0/inbox/" + mode.getUriFragment() + "/");
+        PostMethod m = new PostMethod("https://www.google.com/voice/inbox/" + mode.getUriFragment() + "/");
         for (String msgid : msgIds) {
             m.addParameter("messages", msgid);
         }
-        m.addParameter(mode.toString(), "1");
+        if (!mode.labelString().trim().isEmpty()) {
+            m.addParameter(mode.labelString(), mode.labelStringValue());
+        }
         m.addParameter("_rnr_se", rsrse);
         m.setRequestHeader("Authorization", "GoogleLogin auth=" + authToken);
         int rcode;

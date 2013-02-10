@@ -33,6 +33,7 @@ import javax.xml.xpath.XPathExpressionException;
 import javax.xml.xpath.XPathFactory;
 import org.apache.commons.httpclient.HttpClient;
 import org.apache.commons.httpclient.HttpException;
+import org.apache.commons.httpclient.NameValuePair;
 import org.apache.commons.httpclient.methods.GetMethod;
 import org.apache.commons.httpclient.methods.PostMethod;
 import org.json.JSONException;
@@ -72,14 +73,14 @@ public class App {
                     Worker.ListLocation.values(),
                     Worker.ListLocation.inbox);
             if (locationChosenIndex != JOptionPane.CLOSED_OPTION) {
-                int modeChosenIndex=0;
-                Worker.ArchiveMode modeChosen=null;
+                int modeChosenIndex = 0;
+                Worker.ArchiveMode modeChosen = null;
                 Worker.ListLocation location = Worker.ListLocation.values()[locationChosenIndex];
                 Worker.ArchiveMode[] availableModes = location.getAllowedModes();
-                if (availableModes.length==1) {
-                    modeChosen=availableModes[0];
+                if (availableModes.length == 1) {
+                    modeChosen = availableModes[0];
                 } else {
-                     modeChosenIndex= JOptionPane.showOptionDialog(
+                    modeChosenIndex = JOptionPane.showOptionDialog(
                             null,
                             "Operation mode",
                             "",
@@ -88,23 +89,23 @@ public class App {
                             null,
                             availableModes,
                             Worker.ArchiveMode.archive);
-                    if(modeChosenIndex!=JOptionPane.CLOSED_OPTION){
+                    if (modeChosenIndex != JOptionPane.CLOSED_OPTION) {
                         modeChosen = availableModes[modeChosenIndex];
                     }
                 }
                 if (modeChosenIndex != JOptionPane.CLOSED_OPTION && locationChosenIndex != JOptionPane.CLOSED_OPTION) {
-                    
-                    areYouSure(modeChosen,location);
+
+                    areYouSure(modeChosen, location);
                     assert modeChosen != null : "ZOMG";
                     String authToken = getToken(userName, password);
                     String rnrse = getRnrse(authToken);
 
 
-                    final ProgressMonitor pm = new ProgressMonitor(null, "Working", "", 0, App.parseMsgsLeft(extractInboxJson(authToken,location)));
+                    final ProgressMonitor pm = new ProgressMonitor(null, "Working", "", 0, App.parseMsgsLeft(extractInboxJson(authToken, location,1)));
                     pm.setMillisToDecideToPopup(0);
                     pm.setMillisToPopup(0);
 
-                    Worker worker = new Worker(authToken, rnrse, pm, modeChosen,location);
+                    Worker worker = new Worker(authToken, rnrse, pm, modeChosen, location, new NullFilter());
                     worker.addPropertyChangeListener(new PropertyChangeListener() {
                         @Override
                         public void propertyChange(PropertyChangeEvent evt) {
@@ -169,13 +170,16 @@ public class App {
         return retval;
     }
 
-    static String getInboxPage(String authToken, Worker.ListLocation location) throws IOException {
+    static String getInboxPage(String authToken, Worker.ListLocation location, int page) throws IOException {
 
         HttpClient client = new HttpClient();
         String retval = null;
 
 
         GetMethod m = new GetMethod(location.getUri());
+        if (page > 1) {
+            m.setQueryString(new NameValuePair[]{new NameValuePair("page", "p" + page)});
+        }
         m.setRequestHeader("Authorization", "GoogleLogin auth=" + authToken);
         int rcode;
         rcode = client.executeMethod(m);
@@ -210,7 +214,7 @@ public class App {
         return JOptionPane.showInputDialog("Enter your password");
     }
 
-    private static boolean areYouSure(Worker.ArchiveMode mode,Worker.ListLocation location) {
+    private static boolean areYouSure(Worker.ArchiveMode mode, Worker.ListLocation location) {
         String message = "Are you sure you want to " + mode.toPrettyString() + " your messages from " + location.toString() + "?";
         String warning;
         if ((warning = mode.getWarning()) != null) {
@@ -219,8 +223,8 @@ public class App {
         return JOptionPane.showConfirmDialog(null, message, "Really really sure?", JOptionPane.YES_NO_OPTION, JOptionPane.INFORMATION_MESSAGE) == JOptionPane.YES_OPTION;
     }
 
-    static String extractInboxJson(String authToken, Worker.ListLocation location) throws ParserConfigurationException, IOException, SAXException, XPathExpressionException {
-        Document doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(new ByteArrayInputStream(App.getInboxPage(authToken, location).getBytes()));
+    static String extractInboxJson(String authToken, Worker.ListLocation location, int page) throws ParserConfigurationException, IOException, SAXException, XPathExpressionException {
+        Document doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(new ByteArrayInputStream(App.getInboxPage(authToken, location, page).getBytes()));
         XPathExpression xpr = XPathFactory.newInstance().newXPath().compile("/response/json");
         NodeList nl = (NodeList) xpr.evaluate(doc, XPathConstants.NODESET);
         Node n = nl.item(0);
