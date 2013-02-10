@@ -319,7 +319,7 @@ public class App {
                     text.printStackTrace(new PrintStream(baos=new ByteArrayOutputStream()));
                     
                     textArea.setText(new String(baos.toByteArray()));
-                    JOptionPane.showConfirmDialog(null, panel, "Why did this happen?", JOptionPane.ERROR_MESSAGE);
+                    JOptionPane.showConfirmDialog(null, panel, "Why did this happen?", JOptionPane.OK_CANCEL_OPTION, JOptionPane.ERROR_MESSAGE);
                 }
             });
         } catch (Exception ex) {
