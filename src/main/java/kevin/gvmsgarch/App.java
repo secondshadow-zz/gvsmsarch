@@ -61,40 +61,71 @@ public class App {
 
             String userName = getUserName();
             String password = getPassword();
-            int modeChosenIndex=JOptionPane.showOptionDialog(null, "Operation mode", "", JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE, null, Worker.ArchiveMode.values(), Worker.ArchiveMode.archive);
-            Worker.ArchiveMode modeChosen;
-            if ( modeChosenIndex!=JOptionPane.CLOSED_OPTION && areYouSure(modeChosen=Worker.ArchiveMode.values()[modeChosenIndex])) {
-                assert modeChosen!=null:"ZOMG";
-                String authToken = getToken(userName, password);
-                String rnrse = getRnrse(authToken);
 
-
-                final ProgressMonitor pm = new ProgressMonitor(null, "Working", "", 0, App.parseMsgsLeft(extractInboxJson(authToken)));
-                pm.setMillisToDecideToPopup(0);
-                pm.setMillisToPopup(0);
-                
-                Worker worker = new Worker(authToken, rnrse, pm,modeChosen);
-                worker.addPropertyChangeListener(new PropertyChangeListener() {
-                    @Override
-                    public void propertyChange(PropertyChangeEvent evt) {
-                        if (evt.getPropertyName().equals("progress")) {
-                            Integer msgsLeft = (Integer) evt.getNewValue();
-                            pm.setProgress(pm.getMaximum() - msgsLeft);
-                        } else if (evt.getPropertyName().equals("finish")) {
-                            pm.setProgress(pm.getMaximum());
-                            JOptionPane.showMessageDialog(null, "Task Complete", "", JOptionPane.INFORMATION_MESSAGE);
-                        } else if (evt.getPropertyName().equals("error")) {
-                            pm.setProgress(pm.getMaximum());
-                            ((Exception) evt.getNewValue()).printStackTrace();
-                            JOptionPane.showMessageDialog(null, ((Exception) evt.getNewValue()).getMessage(), "ERROR", JOptionPane.ERROR_MESSAGE);
-                        } else {
-                            System.out.println("Unsupported");
-                            System.out.println(evt);
-                        }
+            int locationChosenIndex = JOptionPane.showOptionDialog(
+                    null,
+                    "Message source",
+                    "",
+                    JOptionPane.DEFAULT_OPTION,
+                    JOptionPane.QUESTION_MESSAGE,
+                    null,
+                    Worker.ListLocation.values(),
+                    Worker.ListLocation.inbox);
+            if (locationChosenIndex != JOptionPane.CLOSED_OPTION) {
+                int modeChosenIndex=0;
+                Worker.ArchiveMode modeChosen=null;
+                Worker.ListLocation location = Worker.ListLocation.values()[locationChosenIndex];
+                if (location.equals(Worker.ListLocation.trash)) {
+                    modeChosen=Worker.ArchiveMode.deleteForever;
+                } else {
+                     modeChosenIndex= JOptionPane.showOptionDialog(
+                            null,
+                            "Operation mode",
+                            "",
+                            JOptionPane.DEFAULT_OPTION,
+                            JOptionPane.QUESTION_MESSAGE,
+                            null,
+                            Worker.ArchiveMode.values(),
+                            Worker.ArchiveMode.archive);
+                    if(modeChosenIndex!=JOptionPane.CLOSED_OPTION){
+                        modeChosen = Worker.ArchiveMode.values()[modeChosenIndex];
                     }
-                });
-                pm.setProgress(0);
-                worker.execute();
+                }
+                if (modeChosenIndex != JOptionPane.CLOSED_OPTION && locationChosenIndex != JOptionPane.CLOSED_OPTION) {
+                    
+                    areYouSure(modeChosen,location);
+                    assert modeChosen != null : "ZOMG";
+                    String authToken = getToken(userName, password);
+                    String rnrse = getRnrse(authToken);
+
+
+                    final ProgressMonitor pm = new ProgressMonitor(null, "Working", "", 0, App.parseMsgsLeft(extractInboxJson(authToken,location)));
+                    pm.setMillisToDecideToPopup(0);
+                    pm.setMillisToPopup(0);
+
+                    Worker worker = new Worker(authToken, rnrse, pm, modeChosen,location);
+                    worker.addPropertyChangeListener(new PropertyChangeListener() {
+                        @Override
+                        public void propertyChange(PropertyChangeEvent evt) {
+                            if (evt.getPropertyName().equals("progress")) {
+                                Integer msgsLeft = (Integer) evt.getNewValue();
+                                pm.setProgress(pm.getMaximum() - msgsLeft);
+                            } else if (evt.getPropertyName().equals("finish")) {
+                                pm.setProgress(pm.getMaximum());
+                                JOptionPane.showMessageDialog(null, "Task Complete", "", JOptionPane.INFORMATION_MESSAGE);
+                            } else if (evt.getPropertyName().equals("error")) {
+                                pm.setProgress(pm.getMaximum());
+                                ((Exception) evt.getNewValue()).printStackTrace();
+                                JOptionPane.showMessageDialog(null, ((Exception) evt.getNewValue()).getMessage(), "ERROR", JOptionPane.ERROR_MESSAGE);
+                            } else {
+                                System.out.println("Unsupported");
+                                System.out.println(evt);
+                            }
+                        }
+                    });
+                    pm.setProgress(0);
+                    worker.execute();
+                }
             }
         } catch (Exception ex) {
             JOptionPane.showMessageDialog(null, ex.getMessage(), "ERROR", JOptionPane.ERROR_MESSAGE);
@@ -137,13 +168,13 @@ public class App {
         return retval;
     }
 
-    static String getInboxPage(String authToken) throws IOException {
+    static String getInboxPage(String authToken, Worker.ListLocation location) throws IOException {
 
         HttpClient client = new HttpClient();
         String retval = null;
 
 
-        GetMethod m = new GetMethod("https://www.google.com/voice/inbox/recent/inbox/");
+        GetMethod m = new GetMethod(location.getUri());
         m.setRequestHeader("Authorization", "GoogleLogin auth=" + authToken);
         int rcode;
         rcode = client.executeMethod(m);
@@ -178,12 +209,17 @@ public class App {
         return JOptionPane.showInputDialog("Enter your password");
     }
 
-    private static boolean areYouSure(Worker.ArchiveMode mode) {
-        return JOptionPane.showConfirmDialog(null, "Are you sure you want to " + mode.toString() +" your messages?", "Really really sure?", JOptionPane.YES_NO_OPTION, JOptionPane.INFORMATION_MESSAGE) == JOptionPane.YES_OPTION;
+    private static boolean areYouSure(Worker.ArchiveMode mode,Worker.ListLocation location) {
+        String message = "Are you sure you want to " + mode.toPrettyString() + " your messages from " + location.toString() + "?";
+        String warning;
+        if ((warning = mode.getWarning()) != null) {
+            message += "\n\n" + warning;
+        }
+        return JOptionPane.showConfirmDialog(null, message, "Really really sure?", JOptionPane.YES_NO_OPTION, JOptionPane.INFORMATION_MESSAGE) == JOptionPane.YES_OPTION;
     }
 
-    static String extractInboxJson(String authToken) throws ParserConfigurationException, IOException, SAXException, XPathExpressionException {
-        Document doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(new ByteArrayInputStream(App.getInboxPage(authToken).getBytes()));
+    static String extractInboxJson(String authToken, Worker.ListLocation location) throws ParserConfigurationException, IOException, SAXException, XPathExpressionException {
+        Document doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(new ByteArrayInputStream(App.getInboxPage(authToken, location).getBytes()));
         XPathExpression xpr = XPathFactory.newInstance().newXPath().compile("/response/json");
         NodeList nl = (NodeList) xpr.evaluate(doc, XPathConstants.NODESET);
         Node n = nl.item(0);
