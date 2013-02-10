@@ -30,8 +30,9 @@ class ProgressPropertyChangeListener implements PropertyChangeListener{
         } else if (evt.getPropertyName().equals("error")) {
             pm.setProgress(pm.getMaximum());
             ((Exception) evt.getNewValue()).printStackTrace();
+            
             Exception ex = (Exception) evt.getNewValue();
-            JOptionPane.showMessageDialog(null, ex.getClass().getName() + "\n" + ex.getMessage(), "ERROR", JOptionPane.ERROR_MESSAGE);
+            App.showErrorDialog(ex);
         }
     }
 }

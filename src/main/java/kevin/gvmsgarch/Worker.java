@@ -41,6 +41,24 @@ import org.xml.sax.SAXException;
  */
 public class Worker extends SwingWorker {
 
+    private HashSet<String> getFilterIds(String json, ContactFilter filter) {
+        try {
+            JSONObject messages = new JSONObject(json).getJSONObject("messages");
+            HashSet<String> keysToRemove = new HashSet<String>();
+            Iterator i = messages.keys();
+            while (i.hasNext()) {
+                String key = (String) i.next();
+                if (!filter.process(messages.getJSONObject(key))) {
+                    keysToRemove.add(key);
+                }
+            }
+
+            return keysToRemove;
+        } catch (Exception ex) {
+            throw new RuntimeException(ex);
+        }
+    }
+
     public static enum ListLocation {
 
         inbox("https://www.google.com/voice/inbox/recent/inbox/"),
@@ -83,10 +101,11 @@ public class Worker extends SwingWorker {
     public static enum ArchiveMode {
 
         archive("archiveMessages", "archive"),
+        moveToInbox("archiveMessages", "archive", "0", "move to inbox"),
         trash("deleteMessages", "trash"),
         undelete("deleteMessages", "trash"),
         markRead("mark", "read", "mark read"),
-        markUnread("mark", "read","0", "mark unread"),
+        markUnread("mark", "read", "0", "mark unread"),
         deleteForever("deleteForeverMessages", "", "unrecoverably delete") {
             @Override
             public String getWarning() {
@@ -107,8 +126,8 @@ public class Worker extends SwingWorker {
         private ArchiveMode(String uriFragment, String labelString, String prettyString) {
             init(uriFragment, labelString, "1", prettyString);
         }
-        
-        private ArchiveMode(String uriFragment, String labelString,String labelStringValue, String prettyString) {
+
+        private ArchiveMode(String uriFragment, String labelString, String labelStringValue, String prettyString) {
             init(uriFragment, labelString, labelStringValue, prettyString);
         }
 
@@ -117,7 +136,7 @@ public class Worker extends SwingWorker {
             assert uriFragment != null && !uriFragment.isEmpty() : "Invalid mode arg";
             assert prettyString != null && !prettyString.isEmpty();
             assert labelString != null;
-            assert labelStringValue!=null && !labelStringValue.isEmpty():"Invalid label string value";
+            assert labelStringValue != null && !labelStringValue.isEmpty() : "Invalid label string value";
             this.uriFragment = uriFragment;
             this.prettyString = prettyString;
             this.labelString = labelString;
@@ -144,7 +163,7 @@ public class Worker extends SwingWorker {
         public String labelString() {
             return labelString;
         }
-        
+
         public String labelStringValue() {
             return labelStringValue;
         }
@@ -187,22 +206,24 @@ public class Worker extends SwingWorker {
             int processed = 0;
             HashSet<String> alreadyProcessed = new HashSet<String>();
             do {
-                int numParsed=0;
+                int numParsed = 0;
                 do {
                     String json = App.extractInboxJson(authToken, this.location, page);
-                    msgIds = getMessageIds(json, this.filter);
+                    msgIds = getMessageIds(json);
                     if (msgIds != null) {
-                        numParsed+=msgIds.size();
+                        numParsed += msgIds.size();
                         msgIds.removeAll(alreadyProcessed);
-                        if(msgIds.isEmpty()) {
+                        processed += msgIds.size();
+                        if(msgIds.removeAll(getFilterIds(json, this.filter))){
+                            this.firePropertyChange("progress", null, processed);
+                        }
+                        if (msgIds.isEmpty()) {
                             page++;
                         }
-                    } 
-                } while (msgIds!=null && msgIds.isEmpty());
-                
-                if (msgIds != null && msgIds.size() > 0) {
-                    
-                    processed += msgIds.size();
+                    }
+                } while (msgIds != null && msgIds.isEmpty() && !pm.isCanceled());
+
+                if (!pm.isCanceled() && msgIds != null && msgIds.size() > 0) {
                     archiveThese(authToken, rnrse, msgIds, mode);
                     alreadyProcessed.addAll(msgIds);
                     this.firePropertyChange("progress", null, processed);
@@ -214,7 +235,7 @@ public class Worker extends SwingWorker {
         }
     }
 
-    private static Set<String> getMessageIds(String textContent, ContactFilter filter) throws JSONException {
+    private static Set<String> getMessageIds(String textContent) throws JSONException {
         HashSet<String> retval = new HashSet<String>();
         JSONObject top = new JSONObject(textContent);
 
@@ -231,16 +252,7 @@ public class Worker extends SwingWorker {
 
 
 
-        if (retval != null) {
-            HashSet<String> keysToRemove = new HashSet<String>();
-            for (String key : retval) {
-                if (!filter.process(messages.getJSONObject(key))) {
-                    keysToRemove.add(key);
-                }
-            }
 
-            retval.removeAll(keysToRemove);
-        }
         return retval;
     }
 

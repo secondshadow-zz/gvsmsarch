@@ -17,6 +17,7 @@
  */
 package kevin.gvmsgarch;
 
+import java.awt.Dimension;
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
 import java.io.BufferedReader;
@@ -24,10 +25,15 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.PrintStream;
 import java.io.StringReader;
 import javax.swing.JOptionPane;
+import javax.swing.JPanel;
 import javax.swing.JPasswordField;
+import javax.swing.JScrollPane;
+import javax.swing.JTextArea;
 import javax.swing.ProgressMonitor;
+import javax.swing.SwingUtilities;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.xpath.XPathConstants;
@@ -236,11 +242,17 @@ public class App {
     }
 
     static String extractInboxJson(String authToken, Worker.ListLocation location, int page) throws ParserConfigurationException, IOException, SAXException, XPathExpressionException {
-        Document doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(new ByteArrayInputStream(App.getInboxPage(authToken, location, page).getBytes()));
-        XPathExpression xpr = XPathFactory.newInstance().newXPath().compile("/response/json");
-        NodeList nl = (NodeList) xpr.evaluate(doc, XPathConstants.NODESET);
-        Node n = nl.item(0);
-        return n.getTextContent();
+        String pageData = "";
+        try {
+            pageData = App.getInboxPage(authToken, location, page);
+            Document doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(new ByteArrayInputStream(pageData.getBytes()));
+            XPathExpression xpr = XPathFactory.newInstance().newXPath().compile("/response/json");
+            NodeList nl = (NodeList) xpr.evaluate(doc, XPathConstants.NODESET);
+            Node n = nl.item(0);
+            return n.getTextContent();
+        } catch (Exception ex) {
+            throw new RuntimeException("Page data for error:\n\n" + pageData+"\n\n", ex);
+        }
     }
 
     static int parseMsgsLeft(String extractInboxJson) throws JSONException {
@@ -287,5 +299,33 @@ public class App {
             retval = new String(pwd.getPassword());
         }
         return retval;
+    }
+
+    public static void showErrorDialog(final Exception text) {
+        try {
+            SwingUtilities.invokeLater(new Runnable() {
+                @Override
+                public void run() {
+                    JPanel panel = new JPanel();
+                    JTextArea textArea = new JTextArea();
+
+                    JScrollPane scroll = new JScrollPane(textArea,
+                            JScrollPane.VERTICAL_SCROLLBAR_ALWAYS, JScrollPane.HORIZONTAL_SCROLLBAR_ALWAYS);
+                    scroll.setMinimumSize(new Dimension(800, 240));
+                    panel.add(scroll);
+                    panel.setMinimumSize(new Dimension(800, 240));
+                    
+                    ByteArrayOutputStream baos;
+                    text.printStackTrace(new PrintStream(baos=new ByteArrayOutputStream()));
+                    
+                    textArea.setText(new String(baos.toByteArray()));
+                    JOptionPane.showConfirmDialog(null, panel, "Why did this happen?", JOptionPane.ERROR_MESSAGE);
+                }
+            });
+        } catch (Exception ex) {
+            System.err.println("ermmm...?");
+            ex.printStackTrace();
+        }
+
     }
 }
