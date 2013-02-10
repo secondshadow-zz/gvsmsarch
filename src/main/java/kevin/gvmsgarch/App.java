@@ -48,6 +48,15 @@ import org.xml.sax.SAXException;
  *
  */
 public class App {
+    
+    public static final String filterExplanation = 
+            "This is mostly an exact match filter. It checks the phone number\n"+
+            "field and the display name (ie: contact name). It will make some\n" +
+            "attempt to do somewhat smarter things with phone numbers if they\n"+
+            "are entered as just a string of numbers with no spaces; however,\n"+
+            "please keep it's relative simplicity in mind. The sole exception is\n"+
+            "if you enter the string Unknown. In this case it looks for calls\n" +
+            "that specifically show up as 'Unknown'.";
 
     public static void main(String[] args) throws HttpException, IOException, ParserConfigurationException, SAXException, XPathExpressionException, JSONException, InterruptedException {
         System.out.println("Google Voice Message Archiver");
@@ -93,19 +102,23 @@ public class App {
                         modeChosen = availableModes[modeChosenIndex];
                     }
                 }
-                if (modeChosenIndex != JOptionPane.CLOSED_OPTION && locationChosenIndex != JOptionPane.CLOSED_OPTION) {
 
-                    areYouSure(modeChosen, location);
+                ContactFilter filter = null;
+                if (modeChosenIndex != JOptionPane.CLOSED_OPTION && locationChosenIndex != JOptionPane.CLOSED_OPTION) {
+                    filter = buildFilter();
+                }
+
+                if (modeChosenIndex != JOptionPane.CLOSED_OPTION && locationChosenIndex != JOptionPane.CLOSED_OPTION && filter != null && areYouSure(modeChosen, location, filter)) {
                     assert modeChosen != null : "ZOMG";
                     String authToken = getToken(userName, password);
                     String rnrse = getRnrse(authToken);
 
 
-                    final ProgressMonitor pm = new ProgressMonitor(null, "Working", "", 0, App.parseMsgsLeft(extractInboxJson(authToken, location,1)));
+                    final ProgressMonitor pm = new ProgressMonitor(null, "Working", "", 0, App.parseMsgsLeft(extractInboxJson(authToken, location, 1)));
                     pm.setMillisToDecideToPopup(0);
                     pm.setMillisToPopup(0);
 
-                    Worker worker = new Worker(authToken, rnrse, pm, modeChosen, location, new NullFilter());
+                    Worker worker = new Worker(authToken, rnrse, pm, modeChosen, location, filter);
                     worker.addPropertyChangeListener(new PropertyChangeListener() {
                         @Override
                         public void propertyChange(PropertyChangeEvent evt) {
@@ -134,14 +147,13 @@ public class App {
         }
     }
 
-    private static String parseIt(String blah) throws SAXException, ParserConfigurationException, IOException, XPathExpressionException, JSONException {
-        Document doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(new ByteArrayInputStream(blah.getBytes()));
-        XPathExpression xpr = XPathFactory.newInstance().newXPath().compile("/response/json");
-        NodeList nl = (NodeList) xpr.evaluate(doc, XPathConstants.NODESET);
-        Node n = nl.item(0);
-        return new JSONObject(n.getTextContent()).toString(4);
-    }
-
+//    private static String parseIt(String blah) throws SAXException, ParserConfigurationException, IOException, XPathExpressionException, JSONException {
+//        Document doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(new ByteArrayInputStream(blah.getBytes()));
+//        XPathExpression xpr = XPathFactory.newInstance().newXPath().compile("/response/json");
+//        NodeList nl = (NodeList) xpr.evaluate(doc, XPathConstants.NODESET);
+//        Node n = nl.item(0);
+//        return new JSONObject(n.getTextContent()).toString(4);
+//    }
     private static String getToken(String email, String password) throws HttpException, IOException {
         HttpClient client = new HttpClient();
         String retval = null;
@@ -214,8 +226,9 @@ public class App {
         return JOptionPane.showInputDialog("Enter your password");
     }
 
-    private static boolean areYouSure(Worker.ArchiveMode mode, Worker.ListLocation location) {
-        String message = "Are you sure you want to " + mode.toPrettyString() + " your messages from " + location.toString() + "?";
+    private static boolean areYouSure(Worker.ArchiveMode mode, Worker.ListLocation location, ContactFilter filter) {
+        String message = "Are you sure you want to " + mode.toPrettyString() + " your messages from " + location.toString() + 
+                "\nfiltered by " + filter.toString() +"?";
         String warning;
         if ((warning = mode.getWarning()) != null) {
             message += "\n\n" + warning;
@@ -234,5 +247,38 @@ public class App {
     static int parseMsgsLeft(String extractInboxJson) throws JSONException {
         JSONObject obj = new JSONObject(extractInboxJson);
         return Integer.parseInt(obj.getString("totalSize"));
+    }
+
+    private static ContactFilter buildFilter() {
+        ContactFilter retval = null;
+
+        int optionPaneResult;
+
+        
+//        optionPaneResult = JOptionPane.showConfirmDialog(null, "Do you want to enable filtering?", "", JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
+        String[] options=new String[]{"Yes","No"};
+        
+        optionPaneResult=JOptionPane.showOptionDialog(null,"Do you want to enable filtering?" , "", JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE, null, options, options[1]);
+        
+        if (optionPaneResult == 0) {
+            JOptionPane.showMessageDialog(null, filterExplanation);
+            String contactName= JOptionPane.showInputDialog("Filter String (contact display name or phone number)");
+            System.out.println(contactName);
+            if(contactName==null || contactName.trim().isEmpty()) {
+                retval = new NullFilter();
+            } else {
+                if(contactName.trim().equals("Unknown")) {
+                    retval= new UnknownFilter();
+                } else {
+                    retval=new NameNumberFilter(contactName);
+                }
+            }
+        } else if (optionPaneResult == JOptionPane.NO_OPTION) {
+            retval = new NullFilter();
+            
+        }
+
+        System.out.println(retval.getClass().getName());
+        return retval;
     }
 }

@@ -167,6 +167,7 @@ public class Worker extends SwingWorker {
         this.mode = mode;
         this.location = location;
         this.filter = (filter == null ? new NullFilter() : filter);
+        System.out.println(filter.getClass().getName());
 
         if (!location.isModeAllowed(mode)) {
             throw new IllegalArgumentException("Invalid operation mode selection for source location.");

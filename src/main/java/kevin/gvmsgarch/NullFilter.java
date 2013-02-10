@@ -16,5 +16,8 @@ public class NullFilter implements ContactFilter{
     public boolean process(JSONObject obj) {
         return true;
     }
-    
+    @Override
+    public String toString() {
+        return "nothing";
+    }
 }
