@@ -18,6 +18,7 @@
 package kevin.gvmsgarch;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
@@ -41,7 +42,20 @@ public class Worker extends SwingWorker {
 
     public static enum ListLocation {
 
-        inbox("https://www.google.com/voice/inbox/recent/inbox/"), trash("https://www.google.com/voice/inbox/recent/trash") {
+        inbox("https://www.google.com/voice/inbox/recent/inbox/"),
+        voicemail("https://www.google.com/voice/inbox/recent/voicemail/") {
+            @Override
+            public boolean isModeAllowed(ArchiveMode mode) {
+                return mode.equals(ArchiveMode.trash) || mode.equals(ArchiveMode.deleteForever);
+            }
+        },
+        sms("https://www.google.com/voice/inbox/recent/sms/") {
+            @Override
+            public boolean isModeAllowed(ArchiveMode mode) {
+                return mode.equals(ArchiveMode.trash) || mode.equals(ArchiveMode.deleteForever);
+            }
+        },
+        trash("https://www.google.com/voice/inbox/recent/trash") {
             @Override
             public boolean isModeAllowed(ArchiveMode mode) {
                 return mode.equals(ArchiveMode.deleteForever);
@@ -60,6 +74,17 @@ public class Worker extends SwingWorker {
 
         public boolean isModeAllowed(ArchiveMode mode) {
             return true;
+        }
+        
+        public ArchiveMode[] getAllowedModes(){
+            ArrayList<ArchiveMode> modes = new ArrayList<ArchiveMode>();
+            
+            for(ArchiveMode m:ArchiveMode.values()) {
+                if(isModeAllowed(m)){
+                    modes.add(m);
+                }
+            }
+            return modes.toArray(new ArchiveMode[0]);
         }
     }
 

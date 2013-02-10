@@ -75,8 +75,9 @@ public class App {
                 int modeChosenIndex=0;
                 Worker.ArchiveMode modeChosen=null;
                 Worker.ListLocation location = Worker.ListLocation.values()[locationChosenIndex];
-                if (location.equals(Worker.ListLocation.trash)) {
-                    modeChosen=Worker.ArchiveMode.deleteForever;
+                Worker.ArchiveMode[] availableModes = location.getAllowedModes();
+                if (availableModes.length==1) {
+                    modeChosen=availableModes[0];
                 } else {
                      modeChosenIndex= JOptionPane.showOptionDialog(
                             null,
@@ -85,10 +86,10 @@ public class App {
                             JOptionPane.DEFAULT_OPTION,
                             JOptionPane.QUESTION_MESSAGE,
                             null,
-                            Worker.ArchiveMode.values(),
+                            availableModes,
                             Worker.ArchiveMode.archive);
                     if(modeChosenIndex!=JOptionPane.CLOSED_OPTION){
-                        modeChosen = Worker.ArchiveMode.values()[modeChosenIndex];
+                        modeChosen = availableModes[modeChosenIndex];
                     }
                 }
                 if (modeChosenIndex != JOptionPane.CLOSED_OPTION && locationChosenIndex != JOptionPane.CLOSED_OPTION) {
