@@ -44,6 +44,7 @@ public class Worker extends SwingWorker {
     public static enum ListLocation {
 
         inbox("https://www.google.com/voice/inbox/recent/inbox/"),
+        history("https://www.google.com/voice/inbox/recent/all/"),
         voicemail("https://www.google.com/voice/inbox/recent/voicemail/"),
         sms("https://www.google.com/voice/inbox/recent/sms/"),
         trash("https://www.google.com/voice/inbox/recent/trash") {
