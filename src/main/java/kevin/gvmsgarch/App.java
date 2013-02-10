@@ -26,6 +26,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.StringReader;
 import javax.swing.JOptionPane;
+import javax.swing.JPasswordField;
 import javax.swing.ProgressMonitor;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
@@ -74,15 +75,18 @@ public class App {
             String userName = getUserName();
             String password = getPassword();
 
-            int locationChosenIndex = JOptionPane.showOptionDialog(
-                    null,
-                    "Message source",
-                    "",
-                    JOptionPane.DEFAULT_OPTION,
-                    JOptionPane.QUESTION_MESSAGE,
-                    null,
-                    Worker.ListLocation.values(),
-                    Worker.ListLocation.inbox);
+            int locationChosenIndex = JOptionPane.CLOSED_OPTION;
+            if (password != null) {
+                locationChosenIndex = JOptionPane.showOptionDialog(
+                        null,
+                        "Message source",
+                        "",
+                        JOptionPane.DEFAULT_OPTION,
+                        JOptionPane.QUESTION_MESSAGE,
+                        null,
+                        Worker.ListLocation.values(),
+                        Worker.ListLocation.inbox);
+            }
             if (locationChosenIndex != JOptionPane.CLOSED_OPTION) {
                 int modeChosenIndex = 0;
                 Worker.ArchiveMode modeChosen = null;
@@ -167,12 +171,12 @@ public class App {
     }
 
     //All because getResponseBodyAsString prints an obnoxious error to STDERR :/
-    private static String makeStringFromStream(InputStream stream) throws IOException{
+    private static String makeStringFromStream(InputStream stream) throws IOException {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         try {
-            int bytesRead=-1;
-            byte[] buffer=new byte[1024*8];
-            while((bytesRead=stream.read(buffer))>-1){
+            int bytesRead = -1;
+            byte[] buffer = new byte[1024 * 8];
+            while ((bytesRead = stream.read(buffer)) > -1) {
                 baos.write(buffer, 0, bytesRead);
             }
             return new String(baos.toByteArray());
@@ -219,10 +223,6 @@ public class App {
 
     private static String getUserName() {
         return JOptionPane.showInputDialog("Enter your gmail address");
-    }
-
-    private static String getPassword() {
-        return JOptionPane.showInputDialog("Enter your password");
     }
 
     private static boolean areYouSure(Worker.ArchiveMode mode, Worker.ListLocation location, ContactFilter filter) {
@@ -276,6 +276,16 @@ public class App {
 
         }
 
+        return retval;
+    }
+
+    private static String getPassword() {
+        String retval = null;
+        JPasswordField pwd = new JPasswordField(20);
+        int optionSelected = JOptionPane.showConfirmDialog(null, pwd, "Enter Password", JOptionPane.OK_CANCEL_OPTION);
+        if (optionSelected == JOptionPane.OK_OPTION) {
+            retval = new String(pwd.getPassword());
+        }
         return retval;
     }
 }
