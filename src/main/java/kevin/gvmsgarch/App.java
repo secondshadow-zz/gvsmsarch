@@ -21,7 +21,9 @@ import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.StringReader;
 import javax.swing.JOptionPane;
 import javax.swing.ProgressMonitor;
@@ -48,15 +50,15 @@ import org.xml.sax.SAXException;
  *
  */
 public class App {
-    
-    public static final String filterExplanation = 
-            "This is mostly an exact match filter. It checks the phone number\n"+
-            "field and the display name (ie: contact name). It will make some\n" +
-            "attempt to do somewhat smarter things with phone numbers if they\n"+
-            "are entered as just a string of numbers with no spaces; however,\n"+
-            "please keep it's relative simplicity in mind. The sole exception is\n"+
-            "if you enter the string Unknown. In this case it looks for calls\n" +
-            "that specifically show up as 'Unknown'.";
+
+    public static final String filterExplanation =
+            "This is mostly an exact match filter. It checks the phone number\n"
+            + "field and the display name (ie: contact name). It will make some\n"
+            + "attempt to do somewhat smarter things with phone numbers if they\n"
+            + "are entered as just a string of numbers with no spaces; however,\n"
+            + "please keep it's relative simplicity in mind. The sole exception is\n"
+            + "if you enter the string Unknown. In this case it looks for calls\n"
+            + "that specifically show up as 'Unknown'.";
 
     public static void main(String[] args) throws HttpException, IOException, ParserConfigurationException, SAXException, XPathExpressionException, JSONException, InterruptedException {
         System.out.println("Google Voice Message Archiver");
@@ -119,25 +121,7 @@ public class App {
                     pm.setMillisToPopup(0);
 
                     Worker worker = new Worker(authToken, rnrse, pm, modeChosen, location, filter);
-                    worker.addPropertyChangeListener(new PropertyChangeListener() {
-                        @Override
-                        public void propertyChange(PropertyChangeEvent evt) {
-                            if (evt.getPropertyName().equals("progress")) {
-                                Integer msgsLeft = (Integer) evt.getNewValue();
-                                pm.setProgress(pm.getMaximum() - msgsLeft);
-                            } else if (evt.getPropertyName().equals("finish")) {
-                                pm.setProgress(pm.getMaximum());
-                                JOptionPane.showMessageDialog(null, "Task Complete", "", JOptionPane.INFORMATION_MESSAGE);
-                            } else if (evt.getPropertyName().equals("error")) {
-                                pm.setProgress(pm.getMaximum());
-                                ((Exception) evt.getNewValue()).printStackTrace();
-                                JOptionPane.showMessageDialog(null, ((Exception) evt.getNewValue()).getMessage(), "ERROR", JOptionPane.ERROR_MESSAGE);
-                            } else {
-                                System.out.println("Unsupported");
-                                System.out.println(evt);
-                            }
-                        }
-                    });
+                    worker.addPropertyChangeListener(new ProgressPropertyChangeListener(pm));
                     pm.setProgress(0);
                     worker.execute();
                 }
@@ -170,8 +154,8 @@ public class App {
         if (rcode != 200) {
             throw new RuntimeException("Bad response code: " + rcode);
         }
-        post.getResponseBodyAsString();
-        BufferedReader sr = new BufferedReader(new StringReader(post.getResponseBodyAsString()));
+
+        BufferedReader sr = new BufferedReader(new StringReader(makeStringFromStream(post.getResponseBodyAsStream())));
         String line = null;
         while ((line = sr.readLine()) != null) {
             if (line.startsWith("Auth")) {
@@ -180,6 +164,21 @@ public class App {
             }
         }
         return retval;
+    }
+
+    //All because getResponseBodyAsString prints an obnoxious error to STDERR :/
+    private static String makeStringFromStream(InputStream stream) throws IOException{
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try {
+            int bytesRead=-1;
+            byte[] buffer=new byte[1024*8];
+            while((bytesRead=stream.read(buffer))>-1){
+                baos.write(buffer, 0, bytesRead);
+            }
+            return new String(baos.toByteArray());
+        } finally {
+            baos.close();
+        }
     }
 
     static String getInboxPage(String authToken, Worker.ListLocation location, int page) throws IOException {
@@ -198,7 +197,7 @@ public class App {
         if (rcode != 200) {
             throw new RuntimeException("Received rcode: " + rcode);
         }
-        retval = m.getResponseBodyAsString();
+        retval = makeStringFromStream(m.getResponseBodyAsStream());
         return retval;
     }
 
@@ -214,7 +213,7 @@ public class App {
         if (rcode != 200) {
             throw new RuntimeException("Received rcode: " + rcode);
         }
-        retval = m.getResponseBodyAsString().split("'_rnr_se':")[1].split("'")[1];
+        retval = makeStringFromStream(m.getResponseBodyAsStream()).split("'_rnr_se':")[1].split("'")[1];
         return retval;
     }
 
@@ -227,8 +226,8 @@ public class App {
     }
 
     private static boolean areYouSure(Worker.ArchiveMode mode, Worker.ListLocation location, ContactFilter filter) {
-        String message = "Are you sure you want to " + mode.toPrettyString() + " your messages from " + location.toString() + 
-                "\nfiltered by " + filter.toString() +"?";
+        String message = "Are you sure you want to " + mode.toPrettyString() + " your messages from " + location.toString()
+                + "\nfiltered by " + filter.toString() + "?";
         String warning;
         if ((warning = mode.getWarning()) != null) {
             message += "\n\n" + warning;
@@ -254,31 +253,29 @@ public class App {
 
         int optionPaneResult;
 
-        
+
 //        optionPaneResult = JOptionPane.showConfirmDialog(null, "Do you want to enable filtering?", "", JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
-        String[] options=new String[]{"Yes","No"};
-        
-        optionPaneResult=JOptionPane.showOptionDialog(null,"Do you want to enable filtering?" , "", JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE, null, options, options[1]);
-        
+        String[] options = new String[]{"Yes", "No"};
+
+        optionPaneResult = JOptionPane.showOptionDialog(null, "Do you want to enable filtering?", "", JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE, null, options, options[1]);
+
         if (optionPaneResult == 0) {
             JOptionPane.showMessageDialog(null, filterExplanation);
-            String contactName= JOptionPane.showInputDialog("Filter String (contact display name or phone number)");
-            System.out.println(contactName);
-            if(contactName==null || contactName.trim().isEmpty()) {
+            String contactName = JOptionPane.showInputDialog("Filter String (contact display name or phone number)");
+            if (contactName == null || contactName.trim().isEmpty()) {
                 retval = new NullFilter();
             } else {
-                if(contactName.trim().equals("Unknown")) {
-                    retval= new UnknownFilter();
+                if (contactName.trim().equals("Unknown")) {
+                    retval = new UnknownFilter();
                 } else {
-                    retval=new NameNumberFilter(contactName);
+                    retval = new NameNumberFilter(contactName);
                 }
             }
         } else if (optionPaneResult == JOptionPane.NO_OPTION) {
             retval = new NullFilter();
-            
+
         }
 
-        System.out.println(retval.getClass().getName());
         return retval;
     }
 }

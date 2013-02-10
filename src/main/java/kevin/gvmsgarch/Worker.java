@@ -167,7 +167,6 @@ public class Worker extends SwingWorker {
         this.mode = mode;
         this.location = location;
         this.filter = (filter == null ? new NullFilter() : filter);
-        System.out.println(filter.getClass().getName());
 
         if (!location.isModeAllowed(mode)) {
             throw new IllegalArgumentException("Invalid operation mode selection for source location.");
@@ -187,21 +186,21 @@ public class Worker extends SwingWorker {
             int processed = 0;
             HashSet<String> alreadyProcessed = new HashSet<String>();
             do {
+                int numParsed=0;
                 do {
                     String json = App.extractInboxJson(authToken, this.location, page);
                     msgIds = getMessageIds(json, this.filter);
                     if (msgIds != null) {
+                        numParsed+=msgIds.size();
                         msgIds.removeAll(alreadyProcessed);
                         if(msgIds.isEmpty()) {
                             page++;
                         }
                     } 
-                    
-                    
                 } while (msgIds!=null && msgIds.isEmpty());
-
+                
                 if (msgIds != null && msgIds.size() > 0) {
-
+                    
                     processed += msgIds.size();
                     archiveThese(authToken, rnrse, msgIds, mode);
                     alreadyProcessed.addAll(msgIds);
